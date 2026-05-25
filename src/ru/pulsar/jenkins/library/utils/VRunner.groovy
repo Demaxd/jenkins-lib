@@ -3,6 +3,10 @@ package ru.pulsar.jenkins.library.utils
 import ru.pulsar.jenkins.library.IStepExecutor
 import ru.pulsar.jenkins.library.ioc.ContextRegistry
 
+import com.cloudbees.groovy.cps.NonCPS
+
+import java.nio.file.NoSuchFileException
+
 class VRunner {
 
     static final String DEFAULT_VRUNNER_OPTS = "RUNNER_NOCACHEUSE=1"
@@ -22,10 +26,21 @@ class VRunner {
 
     static int exec(String command, boolean returnStatus = false) {
         IStepExecutor steps = ContextRegistry.getContext().getStepExecutor()
+        String commandWithVersion = appendV8Version(command, ContextRegistry.getJobConfiguration()?.v8version)
 
         steps.withEnv([DEFAULT_VRUNNER_OPTS]) {
-            return steps.cmd(command, returnStatus)
+            return steps.cmd(commandWithVersion, returnStatus)
         } as int
+    }
+
+    static String appendV8Version(String command, String v8version) {
+        if (v8version == null || v8version.trim().isEmpty()) {
+            return command
+        }
+        if (command.contains("--v8version")) {
+            return command
+        }
+        return "${command} --v8version ${v8version}"
     }
 
     static boolean configContainsSetting(String configPath, String settingName) {
@@ -39,4 +54,48 @@ class VRunner {
         return fileContent.contains("\"$settingName\"")
     }
 
+    static Integer readExitStatusFromFile(String path, Integer valueIfNoSuchFile = 1) {
+
+        Logger.println("Читаем статус возврата из файла ${path}")
+
+        try {
+            String content = ContextRegistry.getContext().getStepExecutor()
+                    .readFile(path)
+                    .trim()
+                    .replaceAll(/^\uFEFF/, '') // платформа генерирует файл с BOM
+
+            if (!content) {
+                Logger.println("Файл со статусом возврата ${path} пуст")
+                return 1
+            } else {
+                return content.toInteger()
+            }
+        } catch (NumberFormatException e) {
+            Logger.println("В файле со статусом возврата ${path} записано не числовое значение: ${e.message}")
+            return 1
+        } catch (Exception e) {
+            if (findCause(e, NoSuchFileException) != null) {
+                Logger.println("Файл со статусом возврата ${path} не найден: ${e.message}. Будет использован переданный статус ${valueIfNoSuchFile}")
+                return valueIfNoSuchFile
+            }
+            Logger.println("При чтении файла со статусом возврата ${path} возникла ошибка: ${e.message}")
+            return 1
+        }
+    }
+
+    @NonCPS
+    private static <T extends Throwable> T findCause(Throwable e, Class<T> type) {
+        Throwable current = e
+        while (current != null) {
+            if (type.isInstance(current)) {
+                return type.cast(current)
+            }
+            if (current.cause != null && current.cause.is(current)) {
+                break
+            }
+            current = current.cause
+        }
+
+        return null
+    }
 }
