@@ -1,18 +1,9 @@
-def call(String path, boolean cleanDir = false) {
-    if (!path?.trim()) error("mkdir: path is empty")
-    
-    if (cleanDir && fileExists(path)) {
-        dir(path) { deleteDir() }
-    }
-    
-    if (isUnix()) {
-        sh "mkdir -p '${path}'"
-    } else {
-        // Таймаут 2 минуты — чтобы не держать очередь
-        timeout(time: 2, unit: 'MINUTES') {
-            echo "DEBUG: перед mkdir, path = '${path}'"
-            bat "@if not exist \"${path}\" mkdir \"${path}\""
-            echo "DEBUG: после mkdir"
-        }
-    }
+def cmd = ['cmd', '/c', "if not exist \"${path}\" mkdir \"${path}\""]
+def proc = new ProcessBuilder(cmd)
+    .directory(new File(env.WORKSPACE))
+    .redirectErrorStream(true)
+    .start()
+proc.waitForOrKill(120_000) // 2 минуты
+if (proc.exitValue() != 0) {
+    error(proc.inputStream.text)
 }
