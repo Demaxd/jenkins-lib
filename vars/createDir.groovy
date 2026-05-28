@@ -10,7 +10,9 @@ def call(String path, boolean cleanDir = false) {
     } else {
         // Таймаут 2 минуты — чтобы не держать очередь
         timeout(time: 2, unit: 'MINUTES') {
+            echo "DEBUG: перед mkdir, path = '${path}'"
             bat "@if not exist \"${path}\" mkdir \"${path}\""
+            echo "DEBUG: после mkdir"
         }
     }
 }
